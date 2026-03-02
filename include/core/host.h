@@ -3,6 +3,8 @@
 #include <string>
 #include <string_view>
 #include <compare>
+#include <algorithm>
+#include <cctype>
 
 namespace core {
 
@@ -19,8 +21,14 @@ namespace core {
 
         [[nodiscard]] size_t hash() const noexcept;
 
+        // Nuevo: Obtener host normalizado (minúsculas, sin www)
+        [[nodiscard]] std::string normalized() const noexcept;
+
     private:
         std::string m_name;
+
+        // Helper para normalizar
+        static std::string normalize(const std::string& input) noexcept;
     };
 
 } // namespace core
