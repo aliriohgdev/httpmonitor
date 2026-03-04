@@ -9,7 +9,6 @@ namespace capture {
     struct PacketData {
         virtual ~PacketData() = default;
 
-        [[nodiscard]] virtual std::chrono::steady_clock::time_point timestamp() const noexcept = 0;
         [[nodiscard]] virtual uint16_t sourcePort() const noexcept = 0;
         [[nodiscard]] virtual uint16_t destPort() const noexcept = 0;
         [[nodiscard]] virtual bool isHttp() const noexcept = 0;

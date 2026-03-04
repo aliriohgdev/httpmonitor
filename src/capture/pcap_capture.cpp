@@ -25,12 +25,7 @@ class PcapPacketDataImpl : public PacketData {
 public:
     PcapPacketDataImpl(pcpp::Packet* packet)
         : m_packet(packet)
-        , m_timestamp(std::chrono::steady_clock::now())
     {}
-
-    std::chrono::steady_clock::time_point timestamp() const noexcept override {
-        return m_timestamp;
-    }
 
     uint16_t sourcePort() const noexcept override {
         auto tcp = m_packet->getLayerOfType<pcpp::TcpLayer>();
