@@ -1,25 +1,20 @@
 #include "capture/packet_capture.h"
 #include "capture/packet_data.h"
 
-// Desactivar temporalmente el warning de flexible array de PcapPlusPlus
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wpedantic"
 #include <pcapplusplus/PcapLiveDevice.h>
 #include <pcapplusplus/PcapLiveDeviceList.h>
 #include <pcapplusplus/Packet.h>
-#include <pcapplusplus/IPv4Layer.h>
 #include <pcapplusplus/TcpLayer.h>
 #include <pcapplusplus/HttpLayer.h>
 #pragma GCC diagnostic pop
 
-// System includes
 #include <arpa/inet.h>
 #include <atomic>
 #include <thread>
 #include <chrono>
-#include <iostream>
 #include <memory>
-#include <cstring>
 
 namespace capture {
 
@@ -28,9 +23,8 @@ namespace capture {
 //=============================================================================
 class PcapPacketDataImpl : public PacketData {
 public:
-    PcapPacketDataImpl(pcpp::Packet* packet, const pcpp::RawPacket* rawPacket)
+    PcapPacketDataImpl(pcpp::Packet* packet)
         : m_packet(packet)
-        , m_rawPacket(rawPacket)
         , m_timestamp(std::chrono::steady_clock::now())
     {}
 
@@ -63,23 +57,7 @@ public:
         return port == 443 || port == 8443;
     }
 
-    std::string_view sourceIP() const noexcept override {
-        auto ip = m_packet->getLayerOfType<pcpp::IPv4Layer>();
-        if (ip) {
-            m_sourceIP = ip->getSrcIPAddress().toString();
-            return m_sourceIP;
-        }
-        return {};
-    }
 
-    std::string_view destIP() const noexcept override {
-        auto ip = m_packet->getLayerOfType<pcpp::IPv4Layer>();
-        if (ip) {
-            m_destIP = ip->getDstIPAddress().toString();
-            return m_destIP;
-        }
-        return {};
-    }
 
     std::string_view payload() const noexcept override {
         auto tcp = m_packet->getLayerOfType<pcpp::TcpLayer>();
@@ -94,10 +72,7 @@ public:
 
 private:
     pcpp::Packet* m_packet;
-    const pcpp::RawPacket* m_rawPacket;
     std::chrono::steady_clock::time_point m_timestamp;
-    mutable std::string m_sourceIP;
-    mutable std::string m_destIP;
 };
 
 //=============================================================================
@@ -115,11 +90,9 @@ public:
             return;
         }
 
-        // Parse packet
         pcpp::Packet parsedPacket(rawPacket);
+        PcapPacketDataImpl packetData(&parsedPacket);
 
-        // Create packet data and call callback
-        PcapPacketDataImpl packetData(&parsedPacket, rawPacket);
         if (m_callback) {
             m_callback(packetData);
         }
@@ -146,10 +119,8 @@ private:
 class PcapPlusPlusCapture : public PacketCapture {
 public:
     PcapPlusPlusCapture() {
-        // Get all devices
         const auto& devices = pcpp::PcapLiveDeviceList::getInstance().getPcapLiveDevicesList();
 
-        // Find first non-loopback device
         for (const auto& dev : devices) {
             if (!dev->getLoopback()) {
                 m_device = dev;
@@ -157,7 +128,6 @@ public:
             }
         }
 
-        // If no device found, take first one
         if (!m_device && !devices.empty()) {
             m_device = devices.front();
         }
@@ -170,7 +140,6 @@ public:
         }
     }
 
-    // Non-copyable, movable
     PcapPlusPlusCapture(const PcapPlusPlusCapture&) = delete;
     PcapPlusPlusCapture& operator=(const PcapPlusPlusCapture&) = delete;
 
@@ -208,31 +177,25 @@ public:
         m_isCapturing = true;
         m_packetCount = 0;
 
-        // Create callback handler
         m_callbackHandler = std::make_unique<PacketCallbackHandler>(
             std::move(callback),
             std::ref(m_isCapturing),
             std::ref(m_packetCount)
         );
 
-        // Start capture thread
         m_captureThread = std::thread([this, duration]() {
             auto startTime = std::chrono::steady_clock::now();
 
-            // Start capturing with callback
             m_device->startCapture(
                 PacketCallbackHandler::staticOnPacket,
                 m_callbackHandler.get()
             );
 
-            // Wait for duration
             std::this_thread::sleep_for(duration);
 
-            // Stop capture
             m_device->stopCapture();
             m_isCapturing = false;
 
-            // Calculate stats
             auto endTime = std::chrono::steady_clock::now();
             CaptureStats stats;
             stats.packets_processed = m_packetCount.load();
@@ -242,7 +205,6 @@ public:
             m_lastStats = stats;
         });
 
-        // Wait for thread to finish
         if (m_captureThread.joinable()) {
             m_captureThread.join();
         }

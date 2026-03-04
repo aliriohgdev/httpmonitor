@@ -8,7 +8,8 @@
 #include <utility>
 #include <iomanip>
 #include <sstream>
-#include <cmath>      // ← NUEVO: para std::log
+#include <cmath>
+#include <fstream>
 
 class HttpMonitor {
 public:
@@ -17,16 +18,21 @@ public:
         std::unique_ptr<capture::PacketCapture> capture
     ) noexcept
         : m_logger(std::move(logger))
-        , m_capture(std::move(capture))
-        , m_stats(std::make_unique<core::Statistics>()) {}
+          , m_capture(std::move(capture))
+          , m_stats(std::make_unique<core::Statistics>()) {
+    }
 
-    HttpMonitor(const HttpMonitor&) = delete;
-    HttpMonitor& operator=(const HttpMonitor&) = delete;
-    HttpMonitor(HttpMonitor&&) = default;
-    HttpMonitor& operator=(HttpMonitor&&) = default;
+    HttpMonitor(const HttpMonitor &) = delete;
+
+    HttpMonitor &operator=(const HttpMonitor &) = delete;
+
+    HttpMonitor(HttpMonitor &&) = default;
+
+    HttpMonitor &operator=(HttpMonitor &&) = default;
+
     ~HttpMonitor() = default;
 
-    [[nodiscard]] int run(int argc, const char* const argv[]) const {
+    [[nodiscard]] int run(int argc, const char *const argv[]) const {
         io::CliParser parser(argc, argv);
         auto result = parser.parse();
 
@@ -36,10 +42,10 @@ public:
             return 1;
         }
 
-        const auto& config = std::get<io::MonitorConfig>(result);
+        const auto &config = std::get<io::MonitorConfig>(result);
 
         m_logger->info("Starting HTTP monitor for " +
-                      std::to_string(config.monitor_time.count()) + " seconds");
+                       std::to_string(config.monitor_time.count()) + " seconds");
 
         if (config.has_log_file()) {
             m_logger->info("Logging to: " + config.log_file.value());
@@ -49,7 +55,7 @@ public:
 
         auto capture_result = m_capture->startCapture(
             config.monitor_time,
-            [this](const capture::PacketData& packet) {
+            [this](const capture::PacketData &packet) {
                 if (!packet.isHttpTraffic()) return;
 
                 auto host = core::HttpParser::extractHost(
@@ -60,10 +66,6 @@ public:
 
                 if (host.has_value()) {
                     m_stats->recordHost(host.value());
-
-                    // Debug: ver qué hosts se están detectando
-                    // m_logger->info("Detected: " + std::string(host->get()) +
-                    //               " (" + std::string(packet.isHttp() ? "HTTP" : "HTTPS") + ")");
                 }
             }
         );
@@ -75,86 +77,91 @@ public:
 
         const auto& stats = std::get<capture::CaptureStats>(capture_result);
 
-        printSummary(stats);
+        std::string summary = generateSummary(stats, config.log_file);
+        m_logger->info(summary);
+
+        if (config.has_log_file()) {
+            saveToFile(config.log_file.value(), summary);
+        }
 
         return 0;
     }
 
 private:
-    void printSummary(const capture::CaptureStats& captureStats) const noexcept {
-        m_logger->info("\n=== HTTP Monitor Summary ===");
-        m_logger->info("Capture duration: " + std::to_string(captureStats.duration.count()) + " seconds");
-        m_logger->info("Total packets processed: " + std::to_string(captureStats.packets_processed));
-
+    std::string generateSummary(
+        const capture::CaptureStats &captureStats,
+        const std::optional<std::string> &logFile
+    ) const noexcept {
+        std::ostringstream oss;
         auto totalRequests = m_stats->totalRequests();
-        m_logger->info("Total HTTP/HTTPS requests detected: " + std::to_string(totalRequests));
+
+        oss << "\n=== HTTP Monitor Summary ===\n";
+        oss << "Duration: " << captureStats.duration.count() << " seconds\n";
+        oss << "Packets processed: " << captureStats.packets_processed << "\n";
+        oss << "Total HTTP/HTTPS requests: " << totalRequests << "\n";
+
+        if (logFile.has_value()) {
+            oss << "Log file: " << logFile.value() << "\n";
+        }
 
         if (totalRequests > 0) {
             auto topHosts = m_stats->getTopHosts(10);
 
-            if (topHosts.empty()) {
-                m_logger->info("  No hosts detected");
-                return;
-            }
+            if (!topHosts.empty()) {
+                oss << "\nTop 10 requested hosts:\n";
 
-            m_logger->info("\nTop 10 requested hosts:");
-
-            // Calcular el ancho máximo para el dominio (para alinear)
-            size_t maxHostWidth = 0;
-            uint64_t maxCount = 0;
-            for (const auto& [host, count] : topHosts) {
-                maxHostWidth = std::max(maxHostWidth, host.get().size());
-                maxCount = std::max(maxCount, count);
-            }
-            maxHostWidth = std::min(maxHostWidth, size_t(40)); // Limitar a 40 chars
-
-            // Mostrar cada host con histograma
-            for (const auto& [host, count] : topHosts) {
-                // Formatear el dominio (truncar si es muy largo)
-                std::string hostStr = host.get();
-                if (hostStr.size() > maxHostWidth) {
-                    hostStr = hostStr.substr(0, maxHostWidth - 3) + "...";
+                size_t maxHostWidth = 0;
+                uint64_t maxCount = 0;
+                for (const auto &[host, count]: topHosts) {
+                    maxHostWidth = std::max(maxHostWidth, host.get().size());
+                    maxCount = std::max(maxCount, count);
                 }
+                maxHostWidth = std::min(maxHostWidth, size_t(40));
 
-                // Calcular barra del histograma (escala logarítmica para mejor visualización)
-                int barLength = 0;
-                if (maxCount > 0) {
-                    // Usar escala logarítmica si hay mucha diferencia
-                    if (maxCount > 1000) {
-                        double ratio = std::log(static_cast<double>(count + 1)) /
-                                      std::log(static_cast<double>(maxCount + 1));
-                        barLength = static_cast<int>(ratio * 50);
-                    } else {
-                        barLength = (count * 50) / maxCount;
+                for (const auto &[host, count]: topHosts) {
+                    std::string hostStr = host.get();
+                    if (hostStr.size() > maxHostWidth) {
+                        hostStr = hostStr.substr(0, maxHostWidth - 3) + "...";
                     }
+
+                    int barLength = 0;
+                    if (maxCount > 0) {
+                        if (maxCount > 1000) {
+                            double ratio = std::log(static_cast<double>(count + 1)) /
+                                           std::log(static_cast<double>(maxCount + 1));
+                            barLength = static_cast<int>(ratio * 50);
+                        } else {
+                            barLength = (count * 50) / maxCount;
+                        }
+                    }
+
+                    std::string bar(barLength, '*');
+
+                    oss << "  " << std::left << std::setw(maxHostWidth + 2) << hostStr
+                            << std::right << std::setw(8) << count << "  " << bar << "\n";
                 }
 
-                // Crear la barra
-                std::string bar(barLength, '*');
-
-                // Formatear línea alineada
-                std::ostringstream line;
-                line << "  " << std::left << std::setw(maxHostWidth + 2) << hostStr
-                     << std::right << std::setw(8) << count << "  " << bar;
-
-                m_logger->info(line.str());
+                oss << "\n  * Max count: " << maxCount;
+                if (maxCount > 1000) oss << " (log scale)";
+                oss << "\n";
             }
-
-            // Mostrar leyenda
-            m_logger->info("\n  * Histogram scale: max count = " + std::to_string(maxCount));
-            if (maxCount > 1000) {
-                m_logger->info("  * Using logarithmic scale for better visualization");
-            }
-
         } else {
-            m_logger->info("\nNo HTTP/HTTPS requests detected during capture period");
-            m_logger->info("Try generating traffic:");
-            m_logger->info("  curl http://example.com");
-            m_logger->info("  curl https://github.com");
-            m_logger->info("  curl https://www.google.com");
+            oss << "\nNo HTTP/HTTPS requests detected\n";
+            oss << "Try: curl http://example.com or curl https://github.com\n";
         }
 
-        m_logger->info("============================\n");
+        oss << "============================\n";
+        return oss.str();
+    }
+
+    void saveToFile(const std::string &filename, const std::string &content) const noexcept {
+        std::ofstream file(filename, std::ios::app);
+        if (file.is_open()) {
+            file << content << std::endl;
+            m_logger->info("Summary appended to: " + filename);
+        } else {
+            m_logger->error("Failed to open log file: " + filename);
+        }
     }
 
     std::unique_ptr<io::Logger> m_logger;
@@ -168,13 +175,13 @@ int main(int argc, const char* const argv[]) {
     auto capture_result = capture::createPacketCapture();
     if (std::holds_alternative<std::string>(capture_result)) {
         logger->error("Failed to create packet capture: " +
-                     std::get<std::string>(capture_result));
+                      std::get<std::string>(capture_result));
         return 1;
     }
 
     HttpMonitor monitor(
         std::move(logger),
-        std::move(std::get<std::unique_ptr<capture::PacketCapture>>(capture_result))
+        std::move(std::get<std::unique_ptr<capture::PacketCapture> >(capture_result))
     );
 
     return monitor.run(argc, argv);

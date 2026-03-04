@@ -52,32 +52,16 @@ std::optional<Host> HttpParser::extractHostFromHttp(std::string_view payload) no
         if (pos == std::string_view::npos) return std::nullopt;
     }
 
-    // Debug: ver dónde encontramos Host:
-    // std::cout << "Found Host at position: " << pos << std::endl;
-
-    // Avanzar hasta después del header
     pos = payload.find_first_not_of(": \t\r\n", pos + (payload[pos] == '\r' ? 7 : 5));
     if (pos == std::string_view::npos) return std::nullopt;
 
-    // Debug: start position
-    // std::cout << "Host starts at: " << pos << " char: '" << payload[pos] << "'" << std::endl;
-
-    // Encontrar el final de la línea
     auto end = payload.find_first_of("\r\n", pos);
     if (end == std::string_view::npos) {
         end = payload.size();
     }
 
-    // Debug: end position
-    // std::cout << "Host ends at: " << end << std::endl;
-
-    // Extraer el host
     std::string_view host = payload.substr(pos, end - pos);
 
-    // Debug: raw host
-    // std::cout << "Raw host: '" << std::string(host) << "'" << std::endl;
-
-    // Limpiar espacios
     while (!host.empty() && std::isspace(static_cast<unsigned char>(host.front()))) {
         host.remove_prefix(1);
     }
@@ -85,14 +69,9 @@ std::optional<Host> HttpParser::extractHostFromHttp(std::string_view payload) no
         host.remove_suffix(1);
     }
 
-    // Quitar puerto si existe (ej: example.com:8080)
-    auto colon = host.find(':');
-    if (colon != std::string_view::npos) {
+    if (const auto colon = host.find(':'); colon != std::string_view::npos) {
         host = host.substr(0, colon);
     }
-
-    // Debug: cleaned host
-    // std::cout << "Cleaned host: '" << std::string(host) << "'" << std::endl;
 
     if (!host.empty()) {
         return Host(std::string(host));
@@ -116,15 +95,13 @@ std::optional<Host> HttpParser::extractSni(std::string_view payload) noexcept {
             pos++;
 
             if (pos + 3 > payload.size()) return std::nullopt;
-            uint32_t client_hello_len = (static_cast<uint8_t>(payload[pos]) << 16) |
-                                        (static_cast<uint8_t>(payload[pos+1]) << 8) |
-                                        static_cast<uint8_t>(payload[pos+2]);
+
             pos += 3;
 
             if (pos + 34 > payload.size()) return std::nullopt;
             pos += 34;
 
-            uint8_t session_id_len = static_cast<uint8_t>(payload[pos++]);
+            const auto session_id_len = static_cast<uint8_t>(payload[pos++]);
             pos += session_id_len;
 
             if (pos + 2 > payload.size()) return std::nullopt;
@@ -151,8 +128,7 @@ std::optional<Host> HttpParser::extractSni(std::string_view payload) noexcept {
 
                 if (ext_type == 0x0000) {
                     if (pos + 2 > payload.size()) return std::nullopt;
-                    uint16_t sni_list_len = (static_cast<uint8_t>(payload[pos]) << 8) |
-                                             static_cast<uint8_t>(payload[pos+1]);
+
                     pos += 2;
 
                     if (pos >= payload.size() || static_cast<uint8_t>(payload[pos]) != 0x00) {
