@@ -4,8 +4,7 @@
 #include <shared_mutex> // Para std::shared_mutex
 
 namespace core {
-
-    void Statistics::recordHost(const Host& host) noexcept {
+    void Statistics::recordHost(const Host &host) noexcept {
         std::unique_lock<std::shared_mutex> lock(m_mutex);
         m_hostCounts[host]++;
         m_totalRequests++;
@@ -16,26 +15,26 @@ namespace core {
         return m_totalRequests;
     }
 
-    std::vector<std::pair<Host, uint64_t>> Statistics::getTopHosts(size_t n) const noexcept {
+    std::vector<std::pair<Host, uint64_t> > Statistics::getTopHosts(size_t n) const noexcept {
         std::shared_lock<std::shared_mutex> lock(m_mutex);
 
-        std::vector<std::pair<Host, uint64_t>> hosts;
+        std::vector<std::pair<Host, uint64_t> > hosts;
         hosts.reserve(m_hostCounts.size());
 
-        for (const auto& [host, count] : m_hostCounts) {
+        for (const auto &[host, count]: m_hostCounts) {
             hosts.emplace_back(host, count);
         }
 
-        std::sort(hosts.begin(), hosts.end(),
-            [](const auto& a, const auto& b) {
-                return a.second > b.second;
-            });
+        const auto sortUntil = hosts.begin() +
+                               static_cast<std::ptrdiff_t>(std::min(n, m_hostCounts.size()));
 
-        if (hosts.size() > n) {
-            hosts.resize(n);
-        }
+        std::ranges::partial_sort(hosts, sortUntil
+                                  ,
+                                  [](const auto &a, const auto &b) noexcept {
+                                      return a.second > b.second;
+                                  }
+        );
 
         return hosts;
     }
-
 } // namespace core
