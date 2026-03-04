@@ -24,12 +24,6 @@ std::optional<Host> HttpParser::extractHost(
     uint16_t destPort,
     uint16_t srcPort) noexcept {
 
-    // Debug: ver los primeros bytes del payload
-    // std::cout << "Payload size: " << payload.size() << std::endl;
-    // if (payload.size() > 20) {
-    //     std::cout << "First 20 bytes: " << std::string(payload.substr(0, 20)) << std::endl;
-    // }
-
     // HTTP (puerto 80)
     if (destPort == 80 || srcPort == 80) {
         return extractHostFromHttp(payload);

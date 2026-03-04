@@ -101,7 +101,7 @@ private:
 };
 
 //=============================================================================
-// OnPacket callback class for v25.05
+// OnPacket callback class
 //=============================================================================
 class PacketCallbackHandler {
 public:
@@ -110,7 +110,6 @@ public:
         , m_isCapturing(isCapturing)
         , m_packetCount(count) {}
 
-    // CORREGIDO: Usamos (void) para silenciar los warnings de parámetros no usados
     void onPacket(pcpp::RawPacket* rawPacket, pcpp::PcapLiveDevice* /*dev*/, void* /*cookie*/) {
         if (!m_isCapturing) {
             return;
@@ -142,7 +141,7 @@ private:
 };
 
 //=============================================================================
-// Capture Implementation for v25.05
+// Capture Implementation
 //=============================================================================
 class PcapPlusPlusCapture : public PacketCapture {
 public:

@@ -11,7 +11,7 @@ namespace io {
 
     struct MonitorConfig {
         std::optional<std::string> log_file;
-        std::chrono::seconds monitor_time;
+        std::chrono::seconds monitor_time{0};
 
         [[nodiscard]] bool has_log_file() const noexcept {
             return log_file.has_value();
@@ -36,9 +36,11 @@ namespace io {
         std::vector<std::string_view> m_args;
 
         [[nodiscard]] static bool is_log_arg(std::string_view arg) noexcept;
-        [[nodiscard]] static bool is_numeric(std::string_view str) noexcept;
-        [[nodiscard]] static std::optional<std::string> extract_log_path(
-            std::string_view arg) noexcept;
+        [[nodiscard]] static std::optional<std::string>
+        extract_log_path(std::string_view arg) noexcept;
+
+        [[nodiscard]] static std::optional<std::chrono::seconds>
+        parse_seconds(std::string_view arg) noexcept;
     };
 
 } // namespace io
